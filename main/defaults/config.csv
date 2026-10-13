@@ -1,0 +1,9 @@
+key,type,encoding,value
+g_config,namespace,,
+band1,data,i16,4000
+band2,data,i16,2000
+band3,data,i16,-1000
+band4,data,i16,-3000
+band5,data,i16,-4000
+band6,data,i16,-8000
+volume,data,i16,600

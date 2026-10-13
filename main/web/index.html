@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <link rel='icon' type='image/png' href='/favicon.png?v=2'>
+    <title>Equalizer - ESP32</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #8B7355 0%, #D2B48C 100%);
+            margin: 0;
+            padding: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            background: linear-gradient(135deg, #F5E6D3 0%, #E8DCC8 100%);
+            border-radius: 20px;
+            padding: 28px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: min(100%, 520px);
+            width: 100%;
+            box-sizing: border-box;
+            border: 3px solid #8B7355;
+        }
+
+        h1 {
+            text-align: center;
+            color: #3E3E3E;
+            margin: 0 0 10px 0;
+            font-size: 26px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #5C5C5C;
+            margin-bottom: 32px;
+            font-size: 14px;
+        }
+
+        .equalizer {
+            display: flex;
+            flex-wrap: nowrap;
+            justify-content: center;
+            align-items: flex-end;
+            gap: 14px;
+            min-height: 240px;
+            background: linear-gradient(to bottom, #E8DCC8, #D2B48C);
+            border-radius: 15px;
+            padding: 24px 16px;
+            border: 2px solid #8B7355;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        .equalizer::-webkit-scrollbar {
+            display: none;
+        }
+
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            flex: 0 0 60px;
+            min-width: 60px;
+        }
+
+        .slider {
+            width: 44px;
+            height: 170px;
+            appearance: slider-vertical;
+            -webkit-appearance: slider-vertical;
+            background: linear-gradient(to bottom, #8B7355, #654321);
+            border-radius: 10px;
+            cursor: pointer;
+            accent-color: #8B7355;
+        }
+
+        .label {
+            font-size: 12px;
+            font-weight: bold;
+            color: #3E3E3E;
+            text-align: center;
+            min-width: 50px;
+        }
+
+        .value {
+            font-size: 14px;
+            font-weight: bold;
+            color: #8B7355;
+            min-width: 50px;
+            text-align: center;
+            height: 20px;
+        }
+
+        .button-container {
+            display: flex;
+            justify-content: center;
+            margin-top: 40px;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .apply-btn {
+            background: linear-gradient(135deg, #8B7355 0%, #654321 100%);
+            color: #F5E6D3;
+            border: none;
+            padding: 12px 32px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(139, 115, 85, 0.4);
+            min-width: 120px;
+        }
+
+        .apply-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(139, 115, 85, 0.6);
+        }
+
+        .apply-btn:active {
+            transform: translateY(0);
+        }
+
+        .status-message {
+            text-align: center;
+            margin-top: 15px;
+            font-size: 14px;
+            min-height: 20px;
+            color: #8B7355;
+        }
+
+        @media (max-width: 520px) {
+            .container {
+                padding: 18px;
+            }
+
+            .equalizer {
+                min-height: 220px;
+                justify-content: flex-start;
+                padding: 20px 18px;
+                gap: 10px;
+            }
+
+            .slider {
+                width: 36px;
+                height: 150px;
+            }
+
+            .label,
+            .value {
+                font-size: 12px;
+                min-width: auto;
+            }
+
+            .volume-container {
+                flex-wrap: wrap;
+                gap: 10px;
+                padding: 14px 16px;
+            }
+
+            .volume-value {
+                min-width: 40px;
+                text-align: center;
+            }
+
+            .button-container {
+                gap: 10px;
+            }
+
+            .apply-btn {
+                flex: 1 1 45%;
+                min-width: 0;
+            }
+        }
+
+        .volume-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: linear-gradient(to right, #E8DCC8, #D2B48C);
+            border-radius: 15px;
+            padding: 15px 25px;
+            margin-top: 25px;
+            border: 2px solid #8B7355;
+        }
+
+        .volume-icon {
+            font-size: 20px;
+            color: #3E3E3E;
+        }
+
+        .volume-slider {
+            flex: 1;
+            height: 8px;
+            background: #C4A482;
+            outline: none;
+            border-radius: 4px;
+            cursor: pointer;
+            accent-color: #8B7355;
+        }
+
+        .volume-value {
+            font-size: 16px;
+            font-weight: bold;
+            color: #8B7355;
+            min-width: 45px;
+            text-align: right;
+        }
+    </style>
+</head>
+
+<body>
+    <div class='container'>
+        <h1>🎵 Equalizer</h1>
+        <p class='subtitle'>Hello ESP! Adjust the audio bands</p>
+        <div class='equalizer'>
+            <div class='slider-group'><input type='range' class='slider' min='-15' max='15' value='0'
+                    oninput="document.getElementById('val1').innerText=this.value+'dB'"><span class='label'>60Hz</span><span
+                    class='value' id='val1'>0dB</span></div>
+            <div class='slider-group'><input type='range' class='slider' min='-15' max='15' value='0'
+                    oninput="document.getElementById('val2').innerText=this.value+'dB'"><span
+                    class='label'>250Hz</span><span class='value' id='val2'>0dB</span></div>
+            <div class='slider-group'><input type='range' class='slider' min='-15' max='15' value='0'
+                    oninput="document.getElementById('val3').innerText=this.value+'dB'"><span class='label'>1kHz</span><span
+                    class='value' id='val3'>0dB</span></div>
+            <div class='slider-group'><input type='range' class='slider' min='-15' max='15' value='0'
+                    oninput="document.getElementById('val4').innerText=this.value+'dB'"><span class='label'>4kHz</span><span
+                    class='value' id='val4'>0dB</span></div>
+            <div class='slider-group'><input type='range' class='slider' min='-15' max='15' value='0'
+                    oninput="document.getElementById('val5').innerText=this.value+'dB'"><span class='label'>8kHz</span><span
+                    class='value' id='val5'>0dB</span></div>
+            <div class='slider-group'><input type='range' class='slider' min='-15' max='15' value='0'
+                    oninput="document.getElementById('val6').innerText=this.value+'dB'"><span
+                    class='label'>16kHz</span><span class='value' id='val6'>0dB</span></div>
+        </div>
+        <div class='volume-container'>
+            <span class='volume-icon'>🔊</span>
+            <input type='range' class='volume-slider' id='volumeSlider' min='0' max='100' value='50'
+                oninput="document.getElementById('volVal').innerText=this.value+'%'">
+            <span class='volume-value' id='volVal'>50%</span>
+        </div>
+        <div class='button-container'>
+            <button class='apply-btn' onclick='applySettings()'>Apply</button>
+            <button class='apply-btn' onclick='saveSettings()' style='background: linear-gradient(135deg, #654321 0%, #3E2723 100%);'>Save</button>
+            <button class='apply-btn' onclick='resetSliders()' style='background: linear-gradient(135deg, #A0522D 0%, #8B4513 100%);'>Reset</button>
+        </div>
+        <div class='status-message' id='statusMessage'></div>
+    </div>
+
+    <script>
+        // Load current settings when page loads
+        window.addEventListener('load', function() {
+            loadSettings();
+        });
+
+        function loadSettings() {
+            fetch('/api/equalizer')
+                .then(response => response.json())
+                .then(data => {
+                    const sliders = document.querySelectorAll('.equalizer .slider');
+                    const valueDisplays = document.querySelectorAll('.equalizer .value');
+                    
+                    sliders[0].value = data.band1;
+                    sliders[1].value = data.band2;
+                    sliders[2].value = data.band3;
+                    sliders[3].value = data.band4;
+                    sliders[4].value = data.band5;
+                    sliders[5].value = data.band6;
+                    
+                    valueDisplays[0].innerText = data.band1 + 'dB';
+                    valueDisplays[1].innerText = data.band2 + 'dB';
+                    valueDisplays[2].innerText = data.band3 + 'dB';
+                    valueDisplays[3].innerText = data.band4 + 'dB';
+                    valueDisplays[4].innerText = data.band5 + 'dB';
+                    valueDisplays[5].innerText = data.band6 + 'dB';
+
+                    // Update volume slider
+                    if (data.volume !== undefined) {
+                        const volSlider = document.getElementById('volumeSlider');
+                        volSlider.value = data.volume;
+                        document.getElementById('volVal').innerText = data.volume + '%';
+                    }
+                    
+                    console.log('Settings loaded:', data);
+                })
+                .catch(error => {
+                    console.error('Error loading settings:', error);
+                });
+        }
+
+        function resetSliders() {
+            const sliders = document.querySelectorAll('.equalizer .slider');
+            const valueDisplays = document.querySelectorAll('.equalizer .value');
+            
+            sliders.forEach((slider, index) => {
+                slider.value = 0;
+                valueDisplays[index].innerText = '0dB';
+            });
+
+            // Also reset volume to 40%
+            const volSlider = document.getElementById('volumeSlider');
+            volSlider.value = 40;
+            document.getElementById('volVal').innerText = '40%';
+            
+            const statusDiv = document.getElementById('statusMessage');
+            statusDiv.innerText = 'Sliders reset to defaults';
+            statusDiv.style.color = '#8B7355';
+            setTimeout(() => {
+                statusDiv.innerText = '';
+            }, 2000);
+        }
+
+        function applySettings() {
+            const sliders = document.querySelectorAll('.equalizer .slider');
+            const volSlider = document.getElementById('volumeSlider');
+            const values = {
+                band1: parseInt(sliders[0].value),
+                band2: parseInt(sliders[1].value),
+                band3: parseInt(sliders[2].value),
+                band4: parseInt(sliders[3].value),
+                band5: parseInt(sliders[4].value),
+                band6: parseInt(sliders[5].value),
+                volume: parseInt(volSlider.value)
+            };
+
+            const statusDiv = document.getElementById('statusMessage');
+            statusDiv.innerText = 'Applying...';
+            statusDiv.style.color = '#667eea';
+
+            fetch('/api/equalizer', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(values)
+            })
+            .then(response => response.json())
+            .then(data => {
+                statusDiv.innerText = '✓ Settings applied!';
+                statusDiv.style.color = '#4caf50';
+                setTimeout(() => {
+                    statusDiv.innerText = '';
+                }, 3000);
+            })
+            .catch(error => {
+                statusDiv.innerText = '✗ Error applying settings';
+                statusDiv.style.color = '#f44336';
+                console.error('Error:', error);
+            });
+        }
+
+        function saveSettings() {
+            const sliders = document.querySelectorAll('.equalizer .slider');
+            const volSlider = document.getElementById('volumeSlider');
+            const values = {
+                band1: parseInt(sliders[0].value),
+                band2: parseInt(sliders[1].value),
+                band3: parseInt(sliders[2].value),
+                band4: parseInt(sliders[3].value),
+                band5: parseInt(sliders[4].value),
+                band6: parseInt(sliders[5].value),
+                volume: parseInt(volSlider.value)
+            };
+
+            const statusDiv = document.getElementById('statusMessage');
+            statusDiv.innerText = 'Saving...';
+            statusDiv.style.color = '#8B7355';
+
+            fetch('/api/equalizer/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(values)
+            })
+            .then(response => response.json())
+            .then(data => {
+                statusDiv.innerText = '✓ Settings saved to device!';
+                statusDiv.style.color = '#4caf50';
+                setTimeout(() => {
+                    statusDiv.innerText = '';
+                }, 3000);
+            })
+            .catch(error => {
+                statusDiv.innerText = '✗ Error saving settings';
+                statusDiv.style.color = '#f44336';
+                console.error('Error:', error);
+            });
+        }
+    </script>
+</body>
+
+</html>
