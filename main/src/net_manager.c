@@ -110,13 +110,15 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         esp_wifi_connect();
     }
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        wifi_event_sta_disconnected_t *event = (wifi_event_sta_disconnected_t *)event_data;
         if (s_retry_num < WIFI_MAXIMUM_RETRY) {
             esp_wifi_connect();
             s_retry_num++;
-            ESP_LOGW(TAG, "Retrying to connect to the AP");
+            ESP_LOGW(TAG, "Disconnected from AP (reason=%d); retrying (%d/%d)",
+                     event->reason, s_retry_num, WIFI_MAXIMUM_RETRY);
         }
         else {
-            ESP_LOGE(TAG, "Failed to connect to AP");
+            ESP_LOGE(TAG, "Failed to connect to AP (reason=%d)", event->reason);
         }
     }
     else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {

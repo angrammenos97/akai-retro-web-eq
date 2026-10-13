@@ -1,4 +1,5 @@
 #include <math.h>
+#include <stdbool.h>
 
 #include "esp_http_server.h"
 #include "esp_log.h"
@@ -30,6 +31,11 @@ static esp_err_t get_favicon_handler(httpd_req_t *req);
 static esp_err_t get_settings_handler(httpd_req_t *req);
 static esp_err_t set_settings_handler(httpd_req_t *req);
 static esp_err_t save_settings_handler(httpd_req_t *req);
+static esp_err_t get_audio_config_handler(httpd_req_t *req);
+static esp_err_t set_audio_config_handler(httpd_req_t *req);
+static esp_err_t save_audio_config_handler(httpd_req_t *req);
+static bool json_integer_in_range(cJSON *root, const char *name, int minimum, int maximum, int *value);
+static esp_err_t update_audio_config(httpd_req_t *req, bool save);
 
 /****************************
  * Web Server functions *
@@ -78,6 +84,27 @@ void web_server_start(void)
         .handler = save_settings_handler,
     };
     httpd_register_uri_handler(server, &uri_save);
+
+    httpd_uri_t uri_get_audio_config = {
+        .uri = "/api/audio",
+        .method = HTTP_GET,
+        .handler = get_audio_config_handler,
+    };
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &uri_get_audio_config));
+
+    httpd_uri_t uri_set_audio_config = {
+        .uri = "/api/audio",
+        .method = HTTP_POST,
+        .handler = set_audio_config_handler,
+    };
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &uri_set_audio_config));
+
+    httpd_uri_t uri_save_audio_config = {
+        .uri = "/api/audio/save",
+        .method = HTTP_POST,
+        .handler = save_audio_config_handler,
+    };
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &uri_save_audio_config));
     
 }
 
@@ -135,6 +162,143 @@ static esp_err_t get_settings_handler(httpd_req_t *req)
     free(response_str);
     cJSON_Delete(root);
     
+    return ESP_OK;
+}
+
+static esp_err_t get_audio_config_handler(httpd_req_t *req)
+{
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddNumberToObject(root, "rx_mclk", g_config.rx_gpio_config.mclk);
+    cJSON_AddNumberToObject(root, "rx_bclk", g_config.rx_gpio_config.bclk);
+    cJSON_AddNumberToObject(root, "rx_ws", g_config.rx_gpio_config.ws);
+    cJSON_AddNumberToObject(root, "rx_din", g_config.rx_gpio_config.din);
+    cJSON_AddNumberToObject(root, "input_rate", g_config.input_sampling_rate);
+    cJSON_AddNumberToObject(root, "input_bits", g_config.input_bits_per_sample);
+    cJSON_AddNumberToObject(root, "input_channels", g_config.input_channels);
+    cJSON_AddNumberToObject(root, "tx_mclk", g_config.tx_gpio_config.mclk);
+    cJSON_AddNumberToObject(root, "tx_bclk", g_config.tx_gpio_config.bclk);
+    cJSON_AddNumberToObject(root, "tx_ws", g_config.tx_gpio_config.ws);
+    cJSON_AddNumberToObject(root, "tx_dout", g_config.tx_gpio_config.dout);
+    cJSON_AddNumberToObject(root, "output_rate", g_config.output_sampling_rate);
+    cJSON_AddNumberToObject(root, "output_bits", g_config.output_bits_per_sample);
+    cJSON_AddNumberToObject(root, "output_channels", g_config.output_channels);
+
+    char *response_str = cJSON_PrintUnformatted(root);
+    if (response_str == NULL) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Unable to create response");
+        return ESP_FAIL;
+    }
+    httpd_resp_set_type(req, "application/json");
+    esp_err_t result = httpd_resp_send(req, response_str, HTTPD_RESP_USE_STRLEN);
+    free(response_str);
+    cJSON_Delete(root);
+    return result;
+}
+
+static esp_err_t set_audio_config_handler(httpd_req_t *req)
+{
+    return update_audio_config(req, false);
+}
+
+static esp_err_t save_audio_config_handler(httpd_req_t *req)
+{
+    return update_audio_config(req, true);
+}
+
+static bool json_integer_in_range(cJSON *root, const char *name, int minimum, int maximum, int *value)
+{
+    cJSON *item = cJSON_GetObjectItemCaseSensitive(root, name);
+    if (!cJSON_IsNumber(item) || item->valuedouble < minimum || item->valuedouble > maximum ||
+        floor(item->valuedouble) != item->valuedouble) {
+        return false;
+    }
+    *value = item->valueint;
+    return true;
+}
+
+static esp_err_t update_audio_config(httpd_req_t *req, bool save)
+{
+    char buffer[512];
+    if (req->content_len == 0 || req->content_len >= sizeof(buffer)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid request size");
+        return ESP_FAIL;
+    }
+
+    size_t received = 0;
+    while (received < req->content_len) {
+        int ret = httpd_req_recv(req, buffer + received, req->content_len - received);
+        if (ret <= 0) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Incomplete request");
+            return ESP_FAIL;
+        }
+        received += ret;
+    }
+    buffer[received] = '\0';
+
+    cJSON *root = cJSON_Parse(buffer);
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    int values[14];
+    const char *keys[] = {
+        "rx_mclk", "rx_bclk", "rx_ws", "rx_din", "input_rate", "input_bits", "input_channels",
+        "tx_mclk", "tx_bclk", "tx_ws", "tx_dout", "output_rate", "output_bits", "output_channels"
+    };
+    bool valid = true;
+    for (size_t i = 0; i < 14 && valid; ++i) {
+        int minimum = (i == 3 || i == 10) ? -1 : 0;
+        int maximum = (i == 3 || i == 10) ? 48 : 48;
+        if (i == 4 || i == 11) {
+            minimum = 8000;
+            maximum = 192000;
+        } else if (i == 5 || i == 12) {
+            minimum = 16;
+            maximum = 32;
+        } else if (i == 6 || i == 13) {
+            minimum = 1;
+            maximum = 2;
+        }
+        valid = json_integer_in_range(root, keys[i], minimum, maximum, &values[i]);
+    }
+    if (valid && ((values[4] != 44100 && values[4] != 48000 && values[4] != 88200 &&
+                   values[4] != 96000 && values[4] != 176400 && values[4] != 192000) ||
+                  (values[11] != 44100 && values[11] != 48000 && values[11] != 88200 &&
+                   values[11] != 96000 && values[11] != 176400 && values[11] != 192000) ||
+                  (values[5] != 16 && values[5] != 24 && values[5] != 32) ||
+                  (values[12] != 16 && values[12] != 24 && values[12] != 32))) {
+        valid = false;
+    }
+    if (!valid) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid audio configuration");
+        return ESP_FAIL;
+    }
+
+    g_config.rx_gpio_config.mclk = values[0];
+    g_config.rx_gpio_config.bclk = values[1];
+    g_config.rx_gpio_config.ws = values[2];
+    g_config.rx_gpio_config.din = values[3];
+    g_config.input_sampling_rate = values[4];
+    g_config.input_bits_per_sample = values[5];
+    g_config.input_channels = values[6];
+    g_config.tx_gpio_config.mclk = values[7];
+    g_config.tx_gpio_config.bclk = values[8];
+    g_config.tx_gpio_config.ws = values[9];
+    g_config.tx_gpio_config.dout = values[10];
+    g_config.output_sampling_rate = values[11];
+    g_config.output_bits_per_sample = values[12];
+    g_config.output_channels = values[13];
+    cJSON_Delete(root);
+
+    if (save) {
+        save_config();
+    }
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"status\":\"success\"}");
+    app_restart();
     return ESP_OK;
 }
 
