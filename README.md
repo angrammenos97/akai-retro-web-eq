@@ -15,7 +15,7 @@ Wi-Fi credentials are kept in `main/include/secrets.h`, which is ignored by Git.
 
 ## Continuous integration
 
-GitHub Actions builds the firmware for the ESP32-S3 on every push and pull request using ESP-IDF v6.0.1. The workflow can also be started manually from the Actions tab.
+GitHub Actions builds the firmware for the ESP32-S3 on every push using ESP-IDF v6.0.1.
 
 Select the appropriate target for your board, then build and flash using the ESP-IDF command prompt:
 
