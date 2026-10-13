@@ -13,6 +13,10 @@ The project uses the ESP-IDF Component Manager. Component versions are declared 
 
 Wi-Fi credentials are kept in `main/include/secrets.h`, which is ignored by Git. The component CMake configuration creates this file from `main/include/secrets.h.example` if it is missing. Update the SSID and password before connecting the device to Wi-Fi.
 
+## Continuous integration
+
+GitHub Actions builds the firmware for the ESP32-S3 on every push and pull request using ESP-IDF v6.0.1. The workflow can also be started manually from the Actions tab.
+
 Select the appropriate target for your board, then build and flash using the ESP-IDF command prompt:
 
 ```console
