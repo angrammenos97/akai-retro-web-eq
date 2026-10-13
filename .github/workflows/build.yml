@@ -1,0 +1,19 @@
+name: Build firmware
+
+on:
+  push:
+
+jobs:
+  build:
+    name: Build for ESP32-S3
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build with ESP-IDF
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v6.0.1
+          target: esp32s3
+          command: idf.py build
