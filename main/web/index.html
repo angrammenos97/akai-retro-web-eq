@@ -218,6 +218,49 @@
             min-width: 45px;
             text-align: right;
         }
+
+        .tab-bar, .audio-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .tab-bar { margin: 20px 0; }
+        .tab-btn, .audio-btn {
+            border: 0;
+            border-radius: 12px;
+            padding: 12px;
+            background: #C4A482;
+            color: #3E3E3E;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .tab-btn.active, .audio-btn {
+            color: #F5E6D3;
+            background: linear-gradient(135deg, #8B7355, #654321);
+        }
+        .tab-panel[hidden] { display: none; }
+        .audio-group {
+            margin: 16px 0;
+            padding: 16px;
+            border: 2px solid #8B7355;
+            border-radius: 15px;
+            background: #E8DCC8;
+        }
+        .audio-group h2 { margin: 0 0 12px; font-size: 18px; color: #3E3E3E; }
+        .audio-field { display: flex; flex-direction: column; gap: 5px; margin: 10px 0; color: #3E3E3E; }
+        .audio-field input, .audio-field select {
+            box-sizing: border-box;
+            width: 100%;
+            padding: 9px;
+            border: 1px solid #8B7355;
+            border-radius: 7px;
+            background: #F5E6D3;
+        }
+
+        @media (max-width: 520px) {
+            .audio-grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 
@@ -225,6 +268,11 @@
     <div class='container'>
         <h1>🎵 Equalizer</h1>
         <p class='subtitle'>Hello ESP! Adjust the audio bands</p>
+        <div class='tab-bar'>
+            <button class='tab-btn active' id='eqTabButton' onclick="showTab('equalizer')">Equalizer</button>
+            <button class='tab-btn' id='audioTabButton' onclick="showTab('audio')">Audio Settings</button>
+        </div>
+        <section class='tab-panel' id='equalizerPanel'>
         <div class='equalizer'>
             <div class='slider-group'><input type='range' class='slider' min='-15' max='15' value='0'
                     oninput="document.getElementById('val1').innerText=this.value+'dB'"><span class='label'>60Hz</span><span
@@ -257,13 +305,99 @@
             <button class='apply-btn' onclick='resetSliders()' style='background: linear-gradient(135deg, #A0522D 0%, #8B4513 100%);'>Reset</button>
         </div>
         <div class='status-message' id='statusMessage'></div>
+        </section>
+        <section class='tab-panel' id='audioPanel' hidden>
+            <div class='audio-grid'>
+                <div class='audio-group'>
+                    <h2>Input (I2S RX)</h2>
+                    <label class='audio-field'>MCLK GPIO<input id='rx_mclk' type='number' min='0' max='48'></label>
+                    <label class='audio-field'>BCLK GPIO<input id='rx_bclk' type='number' min='0' max='48'></label>
+                    <label class='audio-field'>WS GPIO<input id='rx_ws' type='number' min='0' max='48'></label>
+                    <label class='audio-field'>DIN GPIO<input id='rx_din' type='number' min='-1' max='48'></label>
+                    <label class='audio-field'>Sample rate<select id='input_rate'><option>44100</option><option>48000</option><option>88200</option><option>96000</option><option>176400</option><option>192000</option></select></label>
+                    <label class='audio-field'>Bits per sample<select id='input_bits'><option>16</option><option>24</option><option>32</option></select></label>
+                    <label class='audio-field'>Channels<select id='input_channels'><option>1</option><option>2</option></select></label>
+                </div>
+                <div class='audio-group'>
+                    <h2>Output (I2S TX)</h2>
+                    <label class='audio-field'>MCLK GPIO<input id='tx_mclk' type='number' min='0' max='48'></label>
+                    <label class='audio-field'>BCLK GPIO<input id='tx_bclk' type='number' min='0' max='48'></label>
+                    <label class='audio-field'>WS GPIO<input id='tx_ws' type='number' min='0' max='48'></label>
+                    <label class='audio-field'>DOUT GPIO<input id='tx_dout' type='number' min='-1' max='48'></label>
+                    <label class='audio-field'>Sample rate<select id='output_rate'><option>44100</option><option>48000</option><option>88200</option><option>96000</option><option>176400</option><option>192000</option></select></label>
+                    <label class='audio-field'>Bits per sample<select id='output_bits'><option>16</option><option>24</option><option>32</option></select></label>
+                    <label class='audio-field'>Channels<select id='output_channels'><option>1</option><option>2</option></select></label>
+                </div>
+            </div>
+            <div class='button-container'>
+                <button class='audio-btn' onclick='applyAudioSettings(false)'>Apply</button>
+                <button class='audio-btn' onclick='applyAudioSettings(true)'>Save</button>
+            </div>
+            <div class='status-message' id='audioStatusMessage'></div>
+        </section>
     </div>
 
     <script>
         // Load current settings when page loads
         window.addEventListener('load', function() {
             loadSettings();
+            loadAudioSettings();
         });
+
+        function showTab(tab) {
+            const isAudio = tab === 'audio';
+            document.getElementById('equalizerPanel').hidden = isAudio;
+            document.getElementById('audioPanel').hidden = !isAudio;
+            document.getElementById('eqTabButton').classList.toggle('active', !isAudio);
+            document.getElementById('audioTabButton').classList.toggle('active', isAudio);
+        }
+
+        const audioSettingNames = [
+            'rx_mclk', 'rx_bclk', 'rx_ws', 'rx_din', 'input_rate', 'input_bits', 'input_channels',
+            'tx_mclk', 'tx_bclk', 'tx_ws', 'tx_dout', 'output_rate', 'output_bits', 'output_channels'
+        ];
+
+        function loadAudioSettings() {
+            fetch('/api/audio')
+                .then(response => {
+                    if (!response.ok) throw new Error('Unable to load audio settings');
+                    return response.json();
+                })
+                .then(data => audioSettingNames.forEach(name => {
+                    document.getElementById(name).value = data[name];
+                }))
+                .catch(error => {
+                    document.getElementById('audioStatusMessage').innerText = '✗ Error loading audio settings';
+                    console.error(error);
+                });
+        }
+
+        function applyAudioSettings(save) {
+            const values = {};
+            audioSettingNames.forEach(name => {
+                values[name] = Number(document.getElementById(name).value);
+            });
+            const status = document.getElementById('audioStatusMessage');
+            status.innerText = save ? 'Saving...' : 'Applying...';
+            fetch(save ? '/api/audio/save' : '/api/audio', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(values)
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Device rejected audio settings');
+                return response.json();
+            })
+            .then(() => {
+                status.innerText = save ? '✓ Audio settings saved to device!' : '✓ Audio settings applied!';
+                status.style.color = '#4caf50';
+            })
+            .catch(error => {
+                status.innerText = '✗ Error applying audio settings';
+                status.style.color = '#f44336';
+                console.error(error);
+            });
+        }
 
         function loadSettings() {
             fetch('/api/equalizer')
